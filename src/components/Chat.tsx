@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { Bot, Send, User } from 'lucide-react';
+import { Bot, ExternalLink, Send, User } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 
@@ -24,18 +24,21 @@ const SYSTEM_INSTRUCTION = `
 - ركز جداً على "Data Storytelling" (كيف نحكي قصة بالبيانات) وليس مجرد أرقام. وضح دائماً "Business Insights".
 - تحدث باللغة العربية، ولكن استخدم المصطلحات التقنية باللغة الإنجليزية كما هي.
 - كن مشجعاً، محترفاً، وحازماً في نفس الوقت.
+- **مهم جداً:** لديك الآن صلاحية البحث في الإنترنت. استخدم البحث لجلب أحدث المقالات، الكورسات، ومصادر التعلم الإضافية للطالب عندما يسأل أو عندما تحتاج لدعم شرحك بمصادر حديثة.
+- عندما يقوم الطالب برفع مشروع لتقييمه، قم بتحليل الفكرة، واطلب منه تفاصيل إضافية إذا لزم الأمر، ثم قدم تقييماً بناءً يشمل نقاط القوة ونقاط التحسين.
 `;
 
 interface Message {
   role: 'user' | 'model';
   text: string;
+  grounding?: any[];
 }
 
-export function Chat() {
+export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => void }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      text: 'أهلاً بك يا بطل في برنامج النخبة لتحليل البيانات! أنا د. خبير، وسأكون مرشدك في هذه الرحلة الممتعة لمدة 6 أشهر. هل أنت مستعد للبدء بالشهر الأول (Excel)؟',
+      text: 'أهلاً بك يا بطل في برنامج النخبة لتحليل البيانات! أنا د. خبير، وسأكون مرشدك في هذه الرحلة الممتعة لمدة 6 أشهر. هل أنت مستعد للبدء بالشهر الأول؟ يمكنك أيضاً رفع مشاريعك لي لتقييمها، وسأقوم بالبحث في الإنترنت لجلب أفضل المصادر لك.',
     },
   ]);
   const [input, setInput] = useState('');
@@ -59,26 +62,25 @@ export function Chat() {
       model: 'gemini-3.1-pro-preview',
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
+        tools: [{ googleSearch: {} }],
       },
     });
   }, []);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || !chatRef.current) return;
-
-    const userMessage = input.trim();
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
+  const sendMessageLogic = async (text: string) => {
+    if (!text.trim() || !chatRef.current) return;
+    
     setIsLoading(true);
+    setMessages((prev) => [...prev, { role: 'user', text }]);
 
     try {
       const response = await chatRef.current.sendMessage({
-        message: userMessage,
+        message: text,
       });
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: response.text || 'حدث خطأ غير متوقع.' },
+        { role: 'model', text: response.text || 'حدث خطأ غير متوقع.', grounding: chunks },
       ]);
     } catch (error) {
       console.error('Chat error:', error);
@@ -91,16 +93,41 @@ export function Chat() {
     }
   };
 
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoading) return;
+    const userMessage = input.trim();
+    setInput('');
+    await sendMessageLogic(userMessage);
+  };
+
+  useEffect(() => {
+    const handleExternalMessage = (e: any) => {
+      if (e.detail && !isLoading) {
+        sendMessageLogic(e.detail);
+      }
+    };
+    window.addEventListener('send-chat', handleExternalMessage);
+    return () => window.removeEventListener('send-chat', handleExternalMessage);
+  }, [isLoading]);
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 border-l border-slate-200">
-      <div className="p-4 bg-indigo-600 text-white flex items-center gap-3 shadow-sm">
-        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-          <Bot size={24} />
+    <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-slate-200 shadow-2xl">
+      <div className="p-4 bg-indigo-600 text-white flex items-center justify-between shadow-md z-10 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+            <Bot size={24} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg">د. خبير</h2>
+            <p className="text-indigo-100 text-xs">مرشدك الذكي (متصل بالإنترنت)</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-semibold text-lg">د. خبير</h2>
-          <p className="text-indigo-100 text-sm">مرشدك في تحليل البيانات</p>
-        </div>
+        {onClose && (
+          <button onClick={onClose} className="md:hidden p-2 hover:bg-indigo-700 rounded-lg transition-colors">
+            إغلاق
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -121,20 +148,46 @@ export function Chat() {
               {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
             </div>
             <div
-              className={`max-w-[80%] rounded-2xl p-4 shadow-sm ${
+              className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
                 msg.role === 'user'
-                  ? 'bg-emerald-500 text-white rounded-tr-none'
-                  : 'bg-white border border-slate-100 text-slate-800 rounded-tl-none'
+                  ? 'bg-emerald-600 text-white rounded-tr-none'
+                  : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-none'
               }`}
               dir="rtl"
             >
               <div
                 className={`prose prose-sm max-w-none ${
-                  msg.role === 'user' ? 'prose-invert' : ''
+                  msg.role === 'user' ? 'prose-invert' : 'prose-invert prose-slate'
                 }`}
               >
                 <Markdown>{msg.text}</Markdown>
               </div>
+              
+              {/* Render Grounding Links if available */}
+              {msg.grounding && msg.grounding.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-slate-700">
+                  <p className="text-xs text-slate-400 mb-2 font-semibold">مصادر من الإنترنت:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {msg.grounding.map((chunk: any, i: number) => {
+                      if (chunk.web?.uri) {
+                        return (
+                          <a
+                            key={i}
+                            href={chunk.web.uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-indigo-300 px-2 py-1 rounded transition-colors"
+                          >
+                            <ExternalLink size={12} />
+                            <span className="truncate max-w-[150px]">{chunk.web.title || 'مصدر'}</span>
+                          </a>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -143,7 +196,7 @@ export function Chat() {
             <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
               <Bot size={16} />
             </div>
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none p-4 shadow-sm flex items-center gap-2">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-none p-4 shadow-sm flex items-center gap-2">
               <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" />
               <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-.3s]" />
               <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-.5s]" />
@@ -155,7 +208,7 @@ export function Chat() {
 
       <form
         onSubmit={handleSend}
-        className="p-4 bg-white border-t border-slate-200 flex gap-2"
+        className="p-4 bg-slate-900 border-t border-slate-800 flex gap-2 shrink-0"
         dir="rtl"
       >
         <input
@@ -163,7 +216,7 @@ export function Chat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="اسأل د. خبير أو أرسل إجابتك..."
-          className="flex-1 bg-slate-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-xl px-4 py-3 outline-none transition-all"
+          className="flex-1 bg-slate-800 border border-slate-700 text-white focus:bg-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-4 py-3 outline-none transition-all placeholder-slate-500"
           disabled={isLoading}
         />
         <button
