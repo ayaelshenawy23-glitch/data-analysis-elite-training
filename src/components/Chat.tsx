@@ -51,12 +51,12 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
   }, [messages]);
 
   useEffect(() => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
     if (!apiKey) {
-      console.error('GEMINI_API_KEY is not set');
+      console.error('API Key is not set');
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: 'عذراً، مفتاح API غير متوفر. يرجى إضافته في إعدادات التطبيق.' },
+        { role: 'model', text: 'عذراً، مفتاح API غير متوفر. إذا قمت برفع التطبيق على Vercel، يرجى إضافة المتغير `GEMINI_API_KEY` أو `VITE_GEMINI_API_KEY` في قسم Environment Variables في إعدادات مشروعك على Vercel، ثم إعادة البناء (Redeploy).' },
       ]);
       return;
     }
