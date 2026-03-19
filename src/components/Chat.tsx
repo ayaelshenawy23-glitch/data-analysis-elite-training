@@ -64,7 +64,7 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
     try {
       const ai = new GoogleGenAI({ apiKey });
       chatRef.current = ai.chats.create({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-3-flash-preview',
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
           tools: [{ googleSearch: {} }],
@@ -101,9 +101,19 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
       ]);
     } catch (error) {
       console.error('Chat error:', error);
+      
+      let errorMessage = 'عذراً، حدث خطأ غير معروف.';
+      if (error instanceof Error) {
+        if (error.message.includes('429') || error.message.includes('Quota exceeded')) {
+          errorMessage = 'عذراً، تم تجاوز الحد المسموح به من الطلبات المجانية (Rate Limit Exceeded). يرجى الانتظار دقيقة والمحاولة مرة أخرى.';
+        } else {
+          errorMessage = `عذراً، حدث خطأ في الاتصال: ${error.message}`;
+        }
+      }
+      
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: `عذراً، حدث خطأ في الاتصال: ${error instanceof Error ? error.message : 'خطأ غير معروف'}` },
+        { role: 'model', text: errorMessage },
       ]);
     } finally {
       setIsLoading(false);
