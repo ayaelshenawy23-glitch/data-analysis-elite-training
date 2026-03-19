@@ -54,21 +54,38 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.error('GEMINI_API_KEY is not set');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'model', text: 'عذراً، مفتاح API غير متوفر. يرجى إضافته في إعدادات التطبيق.' },
+      ]);
       return;
     }
 
-    const ai = new GoogleGenAI({ apiKey });
-    chatRef.current = ai.chats.create({
-      model: 'gemini-3.1-pro-preview',
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      chatRef.current = ai.chats.create({
+        model: 'gemini-3.1-pro-preview',
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          tools: [{ googleSearch: {} }],
+        },
+      });
+    } catch (error) {
+      console.error('Error initializing chat:', error);
+    }
   }, []);
 
   const sendMessageLogic = async (text: string) => {
-    if (!text.trim() || !chatRef.current) return;
+    if (!text.trim()) return;
+    
+    if (!chatRef.current) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text },
+        { role: 'model', text: 'عذراً، المحادثة غير متصلة. تأكد من صحة مفتاح API.' },
+      ]);
+      return;
+    }
     
     setIsLoading(true);
     setMessages((prev) => [...prev, { role: 'user', text }]);
@@ -86,7 +103,7 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
       console.error('Chat error:', error);
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: 'عذراً، حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.' },
+        { role: 'model', text: `عذراً، حدث خطأ في الاتصال: ${error instanceof Error ? error.message : 'خطأ غير معروف'}` },
       ]);
     } finally {
       setIsLoading(false);
