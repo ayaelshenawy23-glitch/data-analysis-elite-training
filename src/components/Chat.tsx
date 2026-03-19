@@ -64,10 +64,9 @@ export function Chat({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => vo
     try {
       const ai = new GoogleGenAI({ apiKey });
       chatRef.current = ai.chats.create({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash',
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
-          tools: [{ googleSearch: {} }],
         },
       });
     } catch (error) {
